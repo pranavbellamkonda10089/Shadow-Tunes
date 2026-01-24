@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { LANGUAGES, LyricLine, LyricsData, LyricsStatus, Song } from '../types';
 import { generateLyrics } from '../services/geminiService';
-import { Sparkles, AlertCircle, Mic2, Languages } from 'lucide-react';
+import { Sparkles, AlertCircle, Mic2, Languages, Edit3, Save, Clock, Plus, Minus, RotateCcw } from 'lucide-react';
 
 interface LyricsDisplayProps {
   currentSong: Song | null;
@@ -14,42 +14,100 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ currentSong, currentTime 
   // Default to the first language which is Auto-Detect
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLDivElement>(null);
-
-  // Reset state when song changes
-  useEffect(() => {
-    setStatus(LyricsStatus.IDLE);
-    setLyricsData(null);
-    setErrorMsg("");
-  }, [currentSong]);
+  const currentSongIdRef = useRef<string>("");
 
   // Handle auto-scroll based on time
   useEffect(() => {
-    if (activeLineRef.current && scrollContainerRef.current) {
+    if (!isEditing && activeLineRef.current && scrollContainerRef.current) {
       activeLineRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'center'
       });
     }
-  }, [currentTime, lyricsData]);
+  }, [currentTime, lyricsData, isEditing]);
 
-  const handleGenerate = async () => {
-    if (!currentSong) return;
-
+  const performGeneration = async (song: Song, lang: string) => {
     setStatus(LyricsStatus.LOADING);
     setErrorMsg("");
+    setLyricsData(null);
+    setIsEditing(false);
 
     try {
-      const data = await generateLyrics(currentSong.file, selectedLanguage);
-      setLyricsData(data);
-      setStatus(LyricsStatus.SUCCESS);
+      const data = await generateLyrics(song.file, lang);
+      
+      // Prevent race conditions: only update if the song hasn't changed
+      if (currentSongIdRef.current === song.id) {
+        setLyricsData(data);
+        setStatus(LyricsStatus.SUCCESS);
+      }
     } catch (err: any) {
-      setStatus(LyricsStatus.ERROR);
-      // Use the specific error message if available
-      setErrorMsg(err.message || "Failed to generate lyrics. Please try again.");
+      if (currentSongIdRef.current === song.id) {
+        setStatus(LyricsStatus.ERROR);
+        setErrorMsg(err.message || "Failed to generate lyrics. Please try again.");
+      }
     }
+  };
+
+  // Auto-generate on song change
+  useEffect(() => {
+    if (currentSong) {
+        currentSongIdRef.current = currentSong.id;
+        performGeneration(currentSong, selectedLanguage);
+    } else {
+        currentSongIdRef.current = "";
+        setStatus(LyricsStatus.IDLE);
+        setLyricsData(null);
+        setErrorMsg("");
+        setIsEditing(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSong]);
+
+  const handleManualGenerate = () => {
+    if (currentSong) {
+        performGeneration(currentSong, selectedLanguage);
+    }
+  };
+
+  const toggleEditMode = () => {
+    if (isEditing && lyricsData) {
+        // Save mode: sort lines by time to ensure playback logic works
+        const sortedLines = [...lyricsData.lines].sort((a, b) => a.time - b.time);
+        setLyricsData({ ...lyricsData, lines: sortedLines });
+    }
+    setIsEditing(!isEditing);
+  };
+
+  const adjustTimestamp = (index: number, delta: number) => {
+    if (!lyricsData) return;
+    const newLines = [...lyricsData.lines];
+    newLines[index].time = Math.max(0, newLines[index].time + delta);
+    setLyricsData({ ...lyricsData, lines: newLines });
+  };
+
+  const syncToCurrentTime = (index: number) => {
+    if (!lyricsData) return;
+    const newLines = [...lyricsData.lines];
+    newLines[index].time = currentTime;
+    setLyricsData({ ...lyricsData, lines: newLines });
+  };
+
+  const updateLineText = (index: number, text: string) => {
+    if (!lyricsData) return;
+    const newLines = [...lyricsData.lines];
+    newLines[index].text = text;
+    setLyricsData({ ...lyricsData, lines: newLines });
+  };
+
+  const formatTimestamp = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 10); // 1 decimal place
+    return `${mins}:${secs.toString().padStart(2, '0')}.${ms}`;
   };
 
   // Logic to find active line
@@ -102,11 +160,11 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ currentSong, currentTime 
               ))}
             </select>
             <button
-              onClick={handleGenerate}
+              onClick={handleManualGenerate}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg shadow-indigo-500/20"
             >
-              <Sparkles size={16} />
-              Generate
+              {status === LyricsStatus.ERROR ? <RotateCcw size={16} /> : <Sparkles size={16} />}
+              {status === LyricsStatus.ERROR ? "Retry" : "Generate"}
             </button>
           </div>
         ) : status === LyricsStatus.LOADING ? (
@@ -115,13 +173,28 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ currentSong, currentTime 
             <span>Analyzing song...</span>
           </div>
         ) : (
-            // Option to regenerate
-             <button
-              onClick={() => setStatus(LyricsStatus.IDLE)}
-              className="text-xs text-slate-500 hover:text-slate-300 underline"
-            >
-              Regenerate
-            </button>
+            <div className="flex items-center gap-4">
+                 <button
+                    onClick={toggleEditMode}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                        isEditing 
+                        ? 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/20' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                    }`}
+                >
+                    {isEditing ? <Save size={14} /> : <Edit3 size={14} />}
+                    {isEditing ? 'Save Sync' : 'Edit Sync'}
+                </button>
+                
+                {!isEditing && (
+                    <button
+                        onClick={() => setStatus(LyricsStatus.IDLE)}
+                        className="text-xs text-slate-500 hover:text-slate-300 underline"
+                    >
+                        Regenerate
+                    </button>
+                )}
+            </div>
         )}
       </div>
 
@@ -136,29 +209,62 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ currentSong, currentTime 
         )}
 
         {status === LyricsStatus.IDLE && (
+           /* IDLE state now implies waiting for song or manual retry */
           <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-4">
              <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center mb-2">
                 <Sparkles size={24} className="text-indigo-500" />
              </div>
              <p className="max-w-md text-center">
-                Click "Generate" to automatically detect the language and sync lyrics for this song.
+                Ready to generate lyrics.
              </p>
           </div>
         )}
 
         {status === LyricsStatus.SUCCESS && lyricsData && (
-          <div className="space-y-8 pb-32 pt-10 text-center">
+          <div className={`${isEditing ? 'space-y-2 pb-10' : 'space-y-8 pb-32 pt-10 text-center'}`}>
             {lyricsData.lines.length > 0 ? (
                 lyricsData.lines.map((line, index) => {
                   const isActive = index === activeIndex;
+                  
+                  if (isEditing) {
+                      return (
+                        <div key={index} className="flex items-center gap-4 p-3 rounded-xl bg-slate-900/40 border border-slate-800 hover:border-indigo-500/30 group transition-all">
+                             <div className="flex flex-col gap-1">
+                                <span className="font-mono text-xs text-indigo-400 font-bold w-16 text-center bg-slate-950 py-1 rounded">
+                                    {formatTimestamp(line.time)}
+                                </span>
+                             </div>
+                             
+                             <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => adjustTimestamp(index, -0.5)} className="p-1.5 bg-slate-800 hover:bg-indigo-600 hover:text-white rounded text-slate-400 transition-colors" title="-0.5s">
+                                    <Minus size={12} />
+                                </button>
+                                <button onClick={() => adjustTimestamp(index, 0.5)} className="p-1.5 bg-slate-800 hover:bg-indigo-600 hover:text-white rounded text-slate-400 transition-colors" title="+0.5s">
+                                    <Plus size={12} />
+                                </button>
+                                <button onClick={() => syncToCurrentTime(index)} className="p-1.5 bg-slate-800 hover:bg-green-600 hover:text-white rounded text-slate-400 transition-colors ml-1" title="Sync to current player time">
+                                    <Clock size={12} />
+                                </button>
+                             </div>
+
+                             <input 
+                                value={line.text}
+                                onChange={(e) => updateLineText(index, e.target.value)}
+                                className="flex-1 bg-transparent border-none outline-none text-slate-200 text-sm font-medium focus:text-white placeholder:text-slate-600"
+                                placeholder="Lyric text..."
+                             />
+                        </div>
+                      );
+                  }
+
                   return (
                     <div
                       key={index}
                       ref={isActive ? activeLineRef : null}
-                      className={`transition-all duration-500 ease-out transform ${
+                      className={`transition-all duration-500 ease-out transform cursor-default ${
                         isActive 
                           ? 'text-white text-3xl font-bold scale-100 opacity-100 my-8 blur-none' 
-                          : 'text-slate-600 text-xl font-medium scale-95 opacity-40 blur-[1px]'
+                          : 'text-slate-600 text-xl font-medium scale-95 opacity-40 blur-[1px] hover:opacity-60 hover:blur-none'
                       }`}
                     >
                       <p>{line.text}</p>
@@ -173,7 +279,7 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ currentSong, currentTime 
             )}
             
             {/* Footer space */}
-            <div className="h-32"></div>
+            {!isEditing && <div className="h-32"></div>}
           </div>
         )}
       </div>

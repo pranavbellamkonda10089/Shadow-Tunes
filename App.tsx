@@ -8,6 +8,8 @@ const App: React.FC = () => {
   const [songs, setSongs] = useState<Song[]>([]);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [isLyricsOpen, setIsLyricsOpen] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
 
   const handleFilesSelected = (fileList: FileList) => {
     const newSongs: Song[] = [];
@@ -48,18 +50,29 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-slate-950 text-slate-200 overflow-hidden font-sans">
-      {/* Left Sidebar: Player and Library */}
-      <div className="flex flex-col w-[450px] h-full border-r border-slate-800 shadow-2xl z-20">
-        <div className="h-[60%] border-b border-slate-800">
+    <div className="flex h-screen w-screen bg-slate-950 text-slate-200 overflow-hidden font-sans relative">
+       {/* Ambient Background for centered mode */}
+       {!isLyricsOpen && (
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-950/30 via-slate-950 to-slate-950 pointer-events-none z-0"></div>
+       )}
+
+      {/* Main Player/Library Container */}
+      <div className={`flex flex-col h-full bg-slate-950 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] z-20 shadow-2xl relative
+        ${isLyricsOpen ? 'w-[450px] border-r border-slate-800' : 'w-full max-w-4xl mx-auto border-x border-slate-800'}`}>
+        
+        <div className={`${isLibraryOpen ? 'h-[60%]' : 'h-full'} transition-[height] duration-500 ease-in-out border-b border-slate-800 overflow-hidden`}>
             <Player 
                 currentSong={currentSong} 
                 onNext={handleNext} 
                 onPrev={handlePrev}
                 onTimeUpdate={setCurrentTime}
+                isLyricsOpen={isLyricsOpen}
+                onToggleLyrics={() => setIsLyricsOpen(!isLyricsOpen)}
+                isLibraryOpen={isLibraryOpen}
+                onToggleLibrary={() => setIsLibraryOpen(!isLibraryOpen)}
             />
         </div>
-        <div className="h-[40%] bg-slate-900">
+        <div className={`${isLibraryOpen ? 'h-[40%]' : 'h-0'} transition-[height] duration-500 ease-in-out bg-slate-900/50 backdrop-blur-md overflow-hidden`}>
             <Library 
                 songs={songs} 
                 currentSong={currentSong} 
@@ -69,8 +82,10 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Right Content: Lyrics */}
-      <main className="flex-1 h-full min-w-0">
+      {/* Lyrics Content - Hidden via display:none logic to preserve state if needed, or conditional rendering. 
+          Using 'hidden' class keeps it mounted but invisible, good for toggling.
+      */}
+      <main className={`flex-1 h-full min-w-0 transition-opacity duration-500 ease-in-out ${isLyricsOpen ? 'opacity-100 block' : 'opacity-0 hidden'}`}>
         <LyricsDisplay currentSong={currentSong} currentTime={currentTime} />
       </main>
     </div>
