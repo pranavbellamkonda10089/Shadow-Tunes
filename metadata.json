@@ -1,0 +1,5 @@
+{
+  "name": "Shadow Tunes",
+  "description": "A dark-themed local music player that uses AI to generate synchronized lyrics in your preferred language.",
+  "requestFramePermissions": []
+}
