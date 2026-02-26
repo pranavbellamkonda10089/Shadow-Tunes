@@ -83,6 +83,64 @@ export const generateLyrics = async (audioFile: File, language: string): Promise
   }
 };
 
+export const identifySongMetadata = async (filename: string): Promise<{ artist: string; title: string; thumbnailUrl: string }> => {
+  try {
+    const prompt = `
+      Identify the song and artist from the filename: "${filename}".
+      Search for the official album art or a high-quality thumbnail for this song.
+      
+      Return a JSON object with the following keys:
+      - artist: The name of the artist.
+      - title: The correct title of the song.
+      - thumbnailUrl: A direct URL to the album art image.
+      
+      If you cannot find a specific image, leave thumbnailUrl empty.
+      
+      IMPORTANT: Return ONLY the raw JSON string. Do not wrap it in markdown code blocks.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: {
+        parts: [{ text: prompt }]
+      },
+      config: {
+        tools: [{ googleSearch: {} }],
+      }
+    });
+
+    let text = response.text || '{}';
+    
+    // Clean up potential markdown code blocks
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    const data = JSON.parse(text);
+    
+    // Fallback if search grounding provides image in metadata but not in JSON
+    let thumbnailUrl = data.thumbnailUrl;
+    
+    if (!thumbnailUrl && response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+        // Try to find an image in grounding chunks if the model didn't put it in JSON
+        // This is a heuristic as chunks usually contain web pages, but sometimes images.
+        // For now, we rely on the model's ability to extract the URL into the JSON.
+    }
+
+    return {
+      artist: data.artist || "Unknown Artist",
+      title: data.title || filename,
+      thumbnailUrl: thumbnailUrl || ""
+    };
+
+  } catch (error) {
+    console.error("Gemini Metadata Error:", error);
+    return {
+      artist: "Unknown Artist",
+      title: filename,
+      thumbnailUrl: ""
+    };
+  }
+};
+
 const parseLyrics = (rawText: string, requestedLanguage: string): LyricsData => {
   const lines: LyricLine[] = [];
   let rawLines = rawText.split('\n');

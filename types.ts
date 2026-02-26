@@ -2,6 +2,8 @@ export interface Song {
   id: string;
   file: File;
   name: string;
+  artist?: string;
+  thumbnailUrl?: string;
   duration?: number;
   url: string;
 }

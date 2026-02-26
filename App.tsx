@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Library from './components/Library';
 import Player from './components/Player';
 import LyricsDisplay from './components/LyricsDisplay';
 import { Song } from './types';
+import { identifySongMetadata } from './services/geminiService';
 
 const App: React.FC = () => {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -10,6 +11,40 @@ const App: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(0);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+
+  // Effect to enrich song metadata when currentSong changes
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      if (!currentSong) return;
+      
+      // If metadata is already present (or we already tried and failed, maybe add a flag? 
+      // For now, check if artist is missing or name is just the filename)
+      if (currentSong.artist) return;
+
+      try {
+        const metadata = await identifySongMetadata(currentSong.name);
+        
+        // Update the current song with new metadata
+        const updatedSong = {
+          ...currentSong,
+          artist: metadata.artist,
+          name: metadata.title, // Update title if AI found a better one
+          thumbnailUrl: metadata.thumbnailUrl
+        };
+
+        setCurrentSong(updatedSong);
+
+        // Also update the song in the main list
+        setSongs(prevSongs => 
+          prevSongs.map(s => s.id === currentSong.id ? updatedSong : s)
+        );
+      } catch (error) {
+        console.error("Failed to fetch metadata", error);
+      }
+    };
+
+    fetchMetadata();
+  }, [currentSong?.id]); // Only run if the song ID changes, not on every update
 
   const handleFilesSelected = (fileList: FileList) => {
     const newSongs: Song[] = [];

@@ -167,6 +167,59 @@ const Player: React.FC<PlayerProps> = ({
     }
   }, [speed, volume]);
 
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!currentSong || !audioRef.current) return;
+
+      // Avoid interfering with input elements (like volume or progress sliders if focused)
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault(); // Prevent scrolling
+          const newTimeBack = Math.max(0, audioRef.current.currentTime - 10);
+          audioRef.current.currentTime = newTimeBack;
+          setProgress(newTimeBack);
+          break;
+        case 'ArrowRight':
+          e.preventDefault(); // Prevent scrolling
+          const newTimeFwd = Math.min(duration, audioRef.current.currentTime + 10);
+          audioRef.current.currentTime = newTimeFwd;
+          setProgress(newTimeFwd);
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          setVolume(prev => Math.min(1, prev + 0.05));
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          setVolume(prev => Math.max(0, prev - 0.05));
+          break;
+        case ' ':
+          e.preventDefault();
+          if (audioContextRef.current?.state === 'suspended') {
+             audioContextRef.current.resume();
+          }
+          if (isPlaying) {
+            audioRef.current.pause();
+            setIsPlaying(false);
+          } else {
+            audioRef.current.play();
+            setIsPlaying(true);
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [currentSong, duration, isPlaying]);
+
   const togglePlay = () => {
     if (!audioRef.current || !currentSong) return;
     
@@ -247,7 +300,7 @@ const Player: React.FC<PlayerProps> = ({
         <div className="relative z-10 w-[85%] h-[85%] rounded-full overflow-hidden shadow-2xl border-4 border-slate-800/50">
              {currentSong ? (
             <img 
-                src="https://picsum.photos/400/400?grayscale" 
+                src={currentSong.thumbnailUrl || "https://picsum.photos/400/400?grayscale"} 
                 alt="Album Art" 
                 className={`w-full h-full object-cover transition-transform duration-[3s] ease-linear ${isPlaying ? 'rotate-[360deg] animate-[spin_10s_linear_infinite]' : ''}`}
             />
@@ -265,7 +318,9 @@ const Player: React.FC<PlayerProps> = ({
         <h1 className="text-2xl font-bold text-white mb-2 truncate leading-tight">
           {currentSong ? currentSong.name : "No Song Selected"}
         </h1>
-        <p className="text-slate-400 text-sm font-medium">Local Library</p>
+        <p className="text-slate-400 text-sm font-medium">
+          {currentSong?.artist || "Local Library"}
+        </p>
       </div>
 
       {/* Controls */}
@@ -346,7 +401,10 @@ const Player: React.FC<PlayerProps> = ({
              
              <div className="relative flex items-center group/volume">
                 {/* Volume Percentage Tooltip */}
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-2 py-1 bg-slate-800 text-white text-[10px] font-bold rounded opacity-0 group-hover/volume:opacity-100 transition-opacity duration-200 pointer-events-none shadow-xl border border-slate-700 whitespace-nowrap z-50">
+                <div 
+                    className="absolute bottom-full -translate-x-1/2 mb-3 px-2 py-1 bg-slate-800 text-white text-[10px] font-bold rounded opacity-0 group-hover/volume:opacity-100 transition-opacity duration-200 pointer-events-none shadow-xl border border-slate-700 whitespace-nowrap z-50"
+                    style={{ left: `calc(5px + ${volume} * (100% - 10px))` }}
+                >
                     {Math.round(volume * 100)}%
                     <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-700"></div>
                 </div>
